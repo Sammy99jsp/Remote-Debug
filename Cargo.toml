@@ -1,0 +1,17 @@
+[package]
+name = "remote-debug-re"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+chrome-devtools-api = { git = "https://github.com/Sammy99jsp/Chrome-DevTools-rs.git" }
+futures-util = "0.3.28"
+tokio = { version = "*", features = ["full"] }
+warp = { version = "*", features = ["tls"] }
+futures = "*"
+serde = { version = "1.0.180", features = ["serde_derive", "derive"] }
+serde_json = "1.0.104"
+colored = "2.0.4"
+anyhow = "1.0.75"
