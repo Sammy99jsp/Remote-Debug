@@ -32,7 +32,7 @@ fn empty_obj() -> serde_json::Value {
 ///
 /// Incoming request.
 /// 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct Request {
     #[allow(dead_code)]
     jsonrpc: Option<String>,
