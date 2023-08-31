@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::fmt::Display;
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct RpcError {
     pub(crate) code: i32,
     pub(crate) message: String,
@@ -62,7 +62,7 @@ impl Display for Request {
 /// 
 /// TODO: Change this to an enum {Response, Notification}
 /// 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Response {
     pub(crate) jsonrpc: String,
     pub(crate) method: Option<String>,
