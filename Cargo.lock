@@ -759,7 +759,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "remote-debug-re"
+name = "remote-debug"
 version = "0.1.0"
 dependencies = [
  "anyhow",
