@@ -10,7 +10,7 @@ use crate::server::DevToolsServer;
 
 ///
 /// Targets listsed in under this DevTools Server
-/// 
+///
 #[derive(Debug, serde::Serialize, Clone)]
 pub struct Target {
     pub(crate) description: String,
@@ -26,9 +26,9 @@ pub struct Target {
 
     #[serde(rename = "webSocketDebuggerUrl")]
     pub(crate) web_socket_debugger_url: String,
-    
+
     #[serde(rename = "faviconUrl")]
-    pub(crate) favicon_url: Option<String,>
+    pub(crate) favicon_url: Option<String>,
 }
 
 impl Default for Target {
@@ -36,9 +36,8 @@ impl Default for Target {
         Target {
             id: "TEST-1".to_string(),
             title: "Remote Debug Test".to_string(),
-            description:
-                "A test of the devtools remote debug protocol, implemented in Rust! 🦀"
-                    .to_string(),
+            description: "A test of the devtools remote debug protocol, implemented in Rust! 🦀"
+                .to_string(),
             devtools_frontend_url:
                 "/devtools/inspector.html?ws=localhost:9002/devtools/page/TEST-1"
                     .to_string()
@@ -80,7 +79,11 @@ pub struct BrowserVersion {
 impl Default for BrowserVersion {
     fn default() -> Self {
         BrowserVersion {
-            browser: concat!("Remote-Debug-Test/Remote-Debug-Test ", env!("CARGO_PKG_VERSION")).to_string(),
+            browser: concat!(
+                "Remote-Debug-Test/Remote-Debug-Test ",
+                env!("CARGO_PKG_VERSION")
+            )
+            .to_string(),
             protocol_version: "1.3".to_string(),
             user_agent: "Remote Debug".to_string(),
             v8_version: None,
@@ -96,11 +99,11 @@ pub enum MetaOperation {
 }
 
 impl MetaOperation {
-    pub fn exec(&self, debugger: &DevToolsServer) -> serde_json::Value {
+    pub fn exec(&self, version: &BrowserVersion, targets: &[Target]) -> serde_json::Value {
         match self {
-            MetaOperation::Targets => serde_json::to_value(debugger.targets.clone())
+            MetaOperation::Targets => serde_json::to_value(targets)
                 .expect("Server.targets failed to be serialized!"),
-            MetaOperation::Version => serde_json::to_value(debugger.version.clone())
+            MetaOperation::Version => serde_json::to_value(version)
                 .expect("Server.version failed to be serialized!"),
         }
     }

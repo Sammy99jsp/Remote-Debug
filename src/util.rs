@@ -1,8 +1,8 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, sync::Arc, cell::RefCell};
 
 use crate::jsonrpc::{self, Request, Response};
 use chrome_devtools_api::Command;
-use tokio::sync::mpsc::Sender;
+use tokio::sync::{mpsc::{channel, Receiver, Sender}, RwLock};
 
 pub trait Listener<C: Command>:
     Fn(C::Parameters, Sender<Response>) -> Res<C> + Sync + Send + Clone + 'static
@@ -61,17 +61,108 @@ where
 {
 }
 
-#[derive(Clone, Default)]
+///
+/// DevTools-side of communications.
+///
+pub struct ForwarderIn {
+    ///
+    /// Methods/domains to listen for.
+    ///
+    actions: Vec<String>,
+
+    ///
+    /// Incoming requests, and additional tx channel (for notifications).
+    ///
+    inbound: Sender<(Request, Sender<Response>)>,
+
+    ///
+    /// Responses out (only one per request!)
+    ///
+    outbound: RwLock<Receiver<Response>>,
+}
+
+impl ForwarderIn {
+    ///
+    /// A forwarder contains
+    ///
+    pub fn has(&self, action: &String) -> bool {
+        self.actions
+            .iter()
+            .any(|d| action.to_lowercase().starts_with(&d.to_lowercase()))
+    }
+
+    pub async fn send(&self, req: Request, res: &Sender<Response>) -> Response {
+        self.inbound.send((req, res.clone())).await.unwrap();
+        let a = self.outbound.write().await.recv().await.unwrap();
+        a
+    }
+}
+
+///
+/// V8 Inspector-side of communications.
+///
+pub struct ForwarderOut {
+    ///
+    /// Incoming requests, along with an auxiliary tx channel for
+    /// Notifications.
+    ///
+    inbound: Receiver<(Request, Sender<Response>)>,
+
+    ///
+    /// Outbound response to requests (only one per request!)
+    /// Use inbound.1 for notifications.
+    ///
+    outbound: Sender<Response>,
+}
+
+impl ForwarderOut {
+    pub fn incoming(&mut self) -> &mut Receiver<(Request, Sender<Response>)> {
+        &mut self.inbound
+    }
+
+    pub fn outbound(&self) -> &Sender<Response> {
+        &self.outbound
+    }
+}
+
+
+
+///
+/// Utility struct to generate the required channels.
+///
+pub struct Forwarder(Vec<String>);
+
+impl Forwarder {
+    pub fn new<T: ToString>(actions: impl Iterator<Item = T>) -> Self {
+        Self(actions.map(|el| el.to_string()).collect())
+    }
+
+    pub fn split(self) -> (ForwarderIn, ForwarderOut) {
+        let (inbound_in, inbound_out) = channel(8);
+        let (outbound_in, outbound_out) = channel(8);
+
+        (
+            ForwarderIn {
+                actions: self.0,
+                inbound: inbound_in,
+                outbound: RwLock::new(outbound_out),
+            },
+            ForwarderOut {
+                inbound: inbound_out,
+                outbound: outbound_in,
+            },
+        )
+    }
+}
+
+#[derive(Default)]
 pub struct HandlerBuilder {
-    forwarders: Vec<(Vec<String>, Arc<RawListener>)>,
+    forwarders: Vec<ForwarderIn>,
     handlers: HashMap<String, Arc<RawListener>>,
 }
 
 impl HandlerBuilder {
-    pub fn new(
-        forwarders: Vec<(Vec<String>, Arc<RawListener>)>,
-        handlers: HashMap<String, Arc<RawListener>>,
-    ) -> Self {
+    pub fn new(forwarders: Vec<ForwarderIn>, handlers: HashMap<String, Arc<RawListener>>) -> Self {
         Self {
             forwarders,
             handlers,
@@ -89,46 +180,40 @@ impl HandlerBuilder {
         self
     }
 
-    pub fn forward<S, F>(&mut self, iter: impl Iterator<Item = S>, listener: F) -> &mut Self
+    pub fn forward(&mut self, forwarder_in: ForwarderIn) -> &mut Self
     where
-        S: ToString,
-        F: Fn(Request, Sender<Response>) -> Response + Sync + Send + 'static,
     {
-        let discrims = iter.map(|s| s.to_string()).collect::<Vec<_>>();
-        let listener: Arc<RawListener> = Arc::new(listener);
-        self.forwarders.push((discrims, listener));
+        self.forwarders.push(forwarder_in);
         self
     }
 
-
     pub fn build(self, tx: Sender<Response>) -> Handler {
-        Handler { forwarders: self.forwarders, handlers: self.handlers, tx }
+        Handler {
+            forwarders: self.forwarders,
+            handlers: self.handlers,
+            tx,
+        }
     }
 }
 
 pub struct Handler {
-    forwarders: Vec<(Vec<String>, Arc<RawListener>)>,
+    forwarders: Vec<ForwarderIn>,
     handlers: HashMap<String, Arc<RawListener>>,
     tx: Sender<Response>,
 }
 
 impl Handler {
-    
-    pub fn handle_incoming(&self, req: Request) -> jsonrpc::Response {
+    pub async fn handle_incoming(&self, req: Request) -> jsonrpc::Response {
         let id = req.id.clone();
         let m = req.method.clone();
 
         // Give forwarders precedence over normal handlers.
-        if let Some(func) = self
+        if let Some(forwarder) = self
             .forwarders
             .iter()
-            .find(|(d, _)| {
-                d.iter()
-                    .any(|d| m.to_lowercase().starts_with(&d.to_lowercase()))
-            })
-            .map(|(_, f)| f)
+            .find(|f| f.has(&m))
         {
-            return func(req, self.tx.clone());
+            return forwarder.send(req, &self.tx).await;
         }
 
         self.handlers

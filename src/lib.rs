@@ -1,32 +1,43 @@
 #![feature(allocator_api)]
 
 pub mod jsonrpc;
-pub mod util;
-pub mod server;
 pub mod meta;
+pub mod server;
 pub mod traffic;
+pub mod util;
 
-pub use server::{DevToolsServer, TLS};
-pub use util::{HandlerBuilder, Handler};
 pub use meta::{BrowserVersion, Target};
+pub use server::{DevToolsServer, TLS};
+pub use util::{Handler, HandlerBuilder};
 
 #[cfg(test)]
 mod tests {
-    use crate::{DevToolsServer, BrowserVersion, Target, TLS, HandlerBuilder, jsonrpc::Response};
+    use crate::{
+        util::Forwarder,
+        BrowserVersion, DevToolsServer, HandlerBuilder, Target, TLS,
+    };
 
     #[tokio::test]
     async fn test_server() -> anyhow::Result<()> {
-        let mut builder = HandlerBuilder::default();
-        builder.forward(["Runtime."].iter(), |req, _| {
-            println!("{req}");
-            Response::default()
-        });
-
-
         let server = DevToolsServer::new(BrowserVersion::
             default(), vec![Target::default()],
             9002,
-            builder,
+            Box::new(|| {
+                let mut builder = HandlerBuilder::default();
+                let forwarder = Forwarder::new(["Runtime."].iter());
+                let (f_in, mut f_out) = forwarder.split();
+                builder.forward(f_in);
+        
+                // Mock-up V8 Thread.
+                tokio::spawn(async move {
+                    while let Some(req) = f_out.incoming().recv().await {
+                        println!("--> [V8] {req:?}");
+                        f_out.outbound().send(Default::default()).await.unwrap();
+                    }
+                });
+
+                builder
+            }),
             TLS {
                 port: 9003,
                 certificate: "keys/cert.pem",

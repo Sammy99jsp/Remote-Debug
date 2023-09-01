@@ -1,8 +1,16 @@
 use futures_util::StreamExt;
 use serde_json::json;
-use warp::{filters::ws::{WebSocket, self}, http::StatusCode, Filter};
+use warp::{
+    filters::ws::{self, WebSocket},
+    http::StatusCode,
+    Filter,
+};
 
-use crate::{meta::{self, MetaOperation}, traffic::{departing, arriving}, util::{self, HandlerBuilder}};
+use crate::{
+    meta::{self, MetaOperation},
+    traffic::{arriving, departing},
+    util::{self, HandlerBuilder},
+};
 
 #[derive(Debug, Clone)]
 pub struct TLS {
@@ -28,21 +36,9 @@ impl TLS {
 pub struct DevToolsServer {
     port: u16,
     tls: Option<TLS>,
-    handler_builder: HandlerBuilder,
+    handler_builder: Box<dyn Fn() -> HandlerBuilder + Send + Sync>,
     pub(crate) version: meta::BrowserVersion,
     pub(crate) targets: Vec<meta::Target>,
-}
-
-impl Clone for DevToolsServer {
-    fn clone(&self) -> Self {
-        Self {
-            port: self.port,
-            tls: self.tls.clone(),
-            handler_builder: self.handler_builder.clone(),
-            version: self.version.clone(),
-            targets: self.targets.clone(),
-        }
-    }
 }
 
 impl DevToolsServer {
@@ -50,7 +46,7 @@ impl DevToolsServer {
         version: meta::BrowserVersion,
         targets: Vec<meta::Target>,
         port: u16,
-        handler_builder: HandlerBuilder,
+        handler_builder: Box<dyn Fn() -> HandlerBuilder + Send + Sync>,
         tls: impl Into<Option<TLS>>,
     ) -> Self {
         Self {
@@ -61,7 +57,6 @@ impl DevToolsServer {
             tls: tls.into(),
         }
     }
-
 
     pub async fn handle_client(websocket: WebSocket, handler: util::HandlerBuilder) {
         // Set up channels for this socket.
@@ -74,41 +69,42 @@ impl DevToolsServer {
 
         while let Some(req) = rx.recv().await {
             let res = handler.handle_incoming(req);
-            reply_tx.send(res).await.expect("Could not send reply");
+            reply_tx.send(res.await).await.expect("Could not send reply");
         }
     }
 
     pub async fn run(self) -> anyhow::Result<()> {
-        let builder = Box::leak(Box::new(self.handler_builder.clone()));
+        let builder = Box::leak(self.handler_builder);
         let sockets = warp::path!("devtools" / "page" / String)
             .and(warp::ws())
             .map(|page_id: String, ws: ws::Ws| {
                 println!("Web socket for page {}", page_id.as_str());
                 // And then our closure will be called when it completes...
-                ws.on_upgrade(|w| Self::handle_client(w, builder.clone()))
+                ws.on_upgrade(|w| Self::handle_client(w, builder()))
             });
 
-        let self_cloned = self.clone();
-        let self_cloned_2 = self.clone();
+        let version = self.version.clone();
+        let targets = self.targets.clone();
+            
+
         let meta = warp::path!("json" / String).map(move |operation: String| {
             TryInto::<MetaOperation>::try_into(operation)
                 .map(|op| {
                     warp::reply::with_status(
-                        warp::reply::json(&op.exec(&self_cloned)),
+                        warp::reply::json(&op.exec(&version, &targets)),
                         StatusCode::OK,
                     )
                 })
                 .unwrap_or_else(|()| {
-                    warp::reply::with_status(
-                        warp::reply::json(&json!({})),
-                        StatusCode::NOT_FOUND,
-                    )
+                    warp::reply::with_status(warp::reply::json(&json!({})), StatusCode::NOT_FOUND)
                 })
         });
 
+        
+
         let meta_route = warp::path!("json").map(move || {
             warp::reply::with_status(
-                warp::reply::json(&MetaOperation::Targets.exec(&self_cloned_2)),
+                warp::reply::json(&MetaOperation::Targets.exec(&self.version, &self.targets)),
                 StatusCode::OK,
             )
         });
@@ -133,7 +129,13 @@ impl DevToolsServer {
             http.await;
         }
 
-        let builder = unsafe { Box::from_raw_in(builder as *const HandlerBuilder as *mut HandlerBuilder, std::alloc::Global) };
+        let builder = unsafe {
+            Box::from_raw_in(
+                builder as *const (dyn Fn() -> HandlerBuilder + Send + Sync)
+                    as *mut (dyn Fn() -> HandlerBuilder + Send + Sync),
+                std::alloc::Global,
+            )
+        };
         drop(builder);
 
         Ok(())
