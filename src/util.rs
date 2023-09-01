@@ -133,8 +133,8 @@ impl ForwarderOut {
 pub struct Forwarder(Vec<String>);
 
 impl Forwarder {
-    pub fn new<T: ToString>(actions: impl Iterator<Item = T>) -> Self {
-        Self(actions.map(|el| el.to_string()).collect())
+    pub fn new<T: ToString>(actions: impl IntoIterator<Item = T>) -> Self {
+        Self(actions.into_iter().map(|el| el.to_string()).collect())
     }
 
     pub fn split(self) -> (ForwarderIn, ForwarderOut) {
