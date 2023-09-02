@@ -108,8 +108,8 @@ impl ForwarderIn {
 
     pub async fn send(&self, req: Request, res: &Sender<Response>) -> Response {
         self.inbound.send((req, res.clone())).await.unwrap();
-        let a = self.outbound.write().await.recv().await.unwrap();
-        a
+        // TODO: Change me back.
+        self.outbound.write().await.recv().await.unwrap_or_default()
     }
 }
 
