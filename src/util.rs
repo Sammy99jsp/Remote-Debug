@@ -1,8 +1,11 @@
-use std::{collections::HashMap, sync::Arc, cell::RefCell};
+use std::{cell::RefCell, collections::HashMap, sync::Arc};
 
 use crate::jsonrpc::{self, Request, Response};
 use chrome_devtools_api::Command;
-use tokio::sync::{mpsc::{channel, Receiver, Sender}, RwLock};
+use tokio::sync::{
+    mpsc::{channel, Receiver, Sender},
+    RwLock,
+};
 
 pub trait Listener<C: Command>:
     Fn(C::Parameters, Sender<Response>) -> Res<C> + Sync + Send + Clone + 'static
@@ -82,10 +85,22 @@ pub struct ForwarderIn {
 }
 
 impl ForwarderIn {
+    pub fn new(
+        actions: Vec<String>,
+        inbound: Sender<(Request, Sender<Response>)>,
+        outbound: Receiver<Response>,
+    ) -> Self {
+        Self {
+            actions,
+            inbound,
+            outbound: RwLock::new(outbound),
+        }
+    }
+
     ///
-    /// A forwarder contains
+    /// Wether this forwarder contains...
     ///
-    pub fn has(&self, action: &String) -> bool {
+    pub fn has(&self, action: &str) -> bool {
         self.actions
             .iter()
             .any(|d| action.to_lowercase().starts_with(&d.to_lowercase()))
@@ -116,6 +131,10 @@ pub struct ForwarderOut {
 }
 
 impl ForwarderOut {
+    pub fn new(inbound: Receiver<(Request, Sender<Response>)>, outbound: Sender<Response>) -> Self {
+        Self { inbound, outbound }
+    }
+
     pub fn incoming(&mut self) -> &mut Receiver<(Request, Sender<Response>)> {
         &mut self.inbound
     }
@@ -124,8 +143,6 @@ impl ForwarderOut {
         &self.outbound
     }
 }
-
-
 
 ///
 /// Utility struct to generate the required channels.
@@ -181,8 +198,7 @@ impl HandlerBuilder {
     }
 
     pub fn forward(&mut self, forwarder_in: ForwarderIn) -> &mut Self
-    where
-    {
+where {
         self.forwarders.push(forwarder_in);
         self
     }
@@ -208,11 +224,7 @@ impl Handler {
         let m = req.method.clone();
 
         // Give forwarders precedence over normal handlers.
-        if let Some(forwarder) = self
-            .forwarders
-            .iter()
-            .find(|f| f.has(&m))
-        {
+        if let Some(forwarder) = self.forwarders.iter().find(|f| f.has(&m)) {
             return forwarder.send(req, &self.tx).await;
         }
 

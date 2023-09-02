@@ -1,4 +1,4 @@
-#![feature(allocator_api)]
+#![feature(allocator_api, negative_impls)]
 
 pub mod jsonrpc;
 pub mod meta;
@@ -12,12 +12,15 @@ pub use util::{Handler, HandlerBuilder};
 
 #[cfg(test)]
 mod tests {
+    use std::{task::Poll, pin::Pin};
+
     use chrome_devtools_api::protocol::{
         self,
         dom::{GetDocumentReturns, Node},
     };
+    use futures_util::Future;
 
-    use crate::{util::Forwarder, BrowserVersion, DevToolsServer, HandlerBuilder, Target, TLS};
+    use crate::{util::Forwarder, BrowserVersion, DevToolsServer, HandlerBuilder, Target, TLS, jsonrpc::Request};
 
     #[tokio::test]
     async fn test_server() -> anyhow::Result<()> {
@@ -57,13 +60,21 @@ mod tests {
                     })
                 });
 
-                // Mock-up V8 Thread.
-                tokio::spawn(async move {
-                    while let Some((req, _)) = f_out.incoming().recv().await {
-                        println!("--> [V8] {req}");
-                        f_out.outbound().send(Default::default()).await.unwrap();
+                pub struct V8Stuff;
+
+                impl V8Stuff {
+                    pub fn do_stuff(_: Request) {}
+                }
+
+                impl !Send for V8Stuff {}
+
+                impl Future for V8Stuff {
+                    type Output = ();
+
+                    fn poll(self: Pin<&mut Self>, cx: &mut std::task::Context<'_>) -> Poll<Self::Output> {
+                        Poll::Ready(())
                     }
-                });
+                }
 
                 builder
             }),
