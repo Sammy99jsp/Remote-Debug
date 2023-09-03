@@ -32,7 +32,7 @@ fn empty_obj() -> serde_json::Value {
 ///
 /// Incoming request.
 /// 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Request {
     #[serde(default = "def_version")]
     jsonrpc: String,
@@ -66,7 +66,7 @@ fn def_version() -> String {
 /// 
 /// TODO: Change this to an enum {Response, Notification}
 /// 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Response {
     #[serde(default = "def_version")]
     pub(crate) jsonrpc: String,
