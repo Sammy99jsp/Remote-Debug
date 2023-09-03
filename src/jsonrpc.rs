@@ -34,8 +34,8 @@ fn empty_obj() -> serde_json::Value {
 /// 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Request {
-    #[allow(dead_code)]
-    jsonrpc: Option<String>,
+    #[serde(default = "def_version")]
+    jsonrpc: String,
     pub(crate) method: String,
     #[serde(default = "empty_obj")]
     pub(crate) params: serde_json::Value,
@@ -57,6 +57,10 @@ impl Display for Request {
     }
 }
 
+fn def_version() -> String {
+    "2.0".to_string()
+}
+
 ///
 /// Outgoing reponse (and/or notification).
 /// 
@@ -64,6 +68,7 @@ impl Display for Request {
 /// 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Response {
+    #[serde(default = "def_version")]
     pub(crate) jsonrpc: String,
     pub(crate) method: Option<String>,
     pub(crate) result: Option<serde_json::Value>,
@@ -86,7 +91,7 @@ impl Response {
 impl Default for Response {
     fn default() -> Self {
         Self {
-            jsonrpc: "2.0".to_string(),
+            jsonrpc: "2.0".to_string().into(),
             method: "".to_string().into(),
             result: Some(json!({})),
             params: None,
@@ -99,7 +104,7 @@ impl Default for Response {
 impl<E: Event> From<E> for Response {
     fn from(value: E) -> Self {
         Self {
-            jsonrpc: "2.0".to_string(),
+            jsonrpc: "2.0".to_string().into(),
             method: E::__id().to_string().into(),
             result: None,
             params: Some(serde_json::to_value(value).expect("Error Serializing Event")),
@@ -181,7 +186,7 @@ impl Display for Response {
 
 pub fn parse_error() -> Response {
     Response {
-        jsonrpc: "2.0".to_string(),
+        jsonrpc: "2.0".to_string().into(),
         method: None,
         result: None,
         params: None,
