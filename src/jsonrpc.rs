@@ -10,9 +10,9 @@ use std::fmt::Display;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct RpcError {
-    pub(crate) code: i32,
-    pub(crate) message: String,
-    pub(crate) data: Option<serde_json::Value>,
+    pub code: i32,
+    pub message: String,
+    pub data: Option<serde_json::Value>,
 }
 
 impl RpcError {
@@ -36,10 +36,10 @@ fn empty_obj() -> serde_json::Value {
 pub struct Request {
     #[serde(default = "def_version")]
     jsonrpc: String,
-    pub(crate) method: String,
+    pub method: String,
     #[serde(default = "empty_obj")]
-    pub(crate) params: serde_json::Value,
-    pub(crate) id: Option<serde_json::Value>,
+    pub params: serde_json::Value,
+    pub id: Option<serde_json::Value>,
 }
 
 impl Display for Request {
@@ -69,12 +69,12 @@ fn def_version() -> String {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Response {
     #[serde(default = "def_version")]
-    pub(crate) jsonrpc: String,
-    pub(crate) method: Option<String>,
-    pub(crate) result: Option<serde_json::Value>,
-    pub(crate) params: Option<serde_json::Value>,
-    pub(crate) error: Option<RpcError>,
-    pub(crate) id: Option<serde_json::Value>,
+    pub jsonrpc: String,
+    pub method: Option<String>,
+    pub result: Option<serde_json::Value>,
+    pub params: Option<serde_json::Value>,
+    pub error: Option<RpcError>,
+    pub id: Option<serde_json::Value>,
 }
 
 impl Response {
