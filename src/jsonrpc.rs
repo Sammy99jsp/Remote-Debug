@@ -35,7 +35,7 @@ fn empty_obj() -> serde_json::Value {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Request {
     #[serde(default = "def_version")]
-    jsonrpc: String,
+    pub jsonrpc: String,
     pub method: String,
     #[serde(default = "empty_obj")]
     pub params: serde_json::Value,
