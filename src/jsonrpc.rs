@@ -132,6 +132,10 @@ impl Response {
     pub fn to_json(&self) -> String {
         serde_json::to_string(self).unwrap()
     }
+
+    pub fn has_id(&self) -> bool {
+        self.id.is_some()
+    }
 }
 
 fn shorten(s: String) -> String {
